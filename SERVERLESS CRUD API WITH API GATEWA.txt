@@ -1,0 +1,180 @@
+SERVERLESS CRUD API WITH API GATEWAY, LAMDA AND DYNAMODB
+  # Process steps starts from 01 and continue on....
+ 
+     01- Create a dynamobd
+         * Table name - datlabunch-01  ( name optional )
+         * Partition key - id  ( name optional )
+         * REMAINING ALL DEFULT
+      
+     02- Create a Lamda function
+         * Function name - datlabunch-CRUDhandler
+         * Runtime - Node.js 22.x ( defult )
+         * Architecture - x86_64
+         * Default execution role - (select) Create a new role with basic Lambda permissions
+         * REMAINING ALL DEFULT
+          
+          Next give permissions to Lamda
+           - In your Lamda functions Click on your function--> In configuration click on Role name ( it takes
+             new tab ) - IAM --> Permissions policies --> Add permission --> Attach policy -->
+                                                                             -- In search bar
+                                                                                - DynamoDBFullaccess
+                                                                                - Cloudwatchfullaccess 
+                                                                                  ( click on add permissins )
+    
+    03- Code Change
+        * open your Lamda function --> go to code section( remove the code and add the code given below )
+          --> And click on Deploy
+           
+   import { ListTablesCommand, DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import {
+  UpdateCommand,
+  PutCommand,
+  DynamoDBDocumentClient,
+  ScanCommand,
+  DeleteCommand,
+} from "@aws-sdk/lib-dynamodb";
+
+const client = new DynamoDBClient();
+const docClient = DynamoDBDocumentClient.from(client);
+
+export const handler = async (event, context) => {
+  let response;
+
+  switch (event.httpMethod) {
+    case "GET":
+      response = await handleGetRequest();
+      break;
+    case "POST":
+      response = await handlePostRequest(event, context);
+      break;
+    case "PATCH":
+      response = await handlePatchRequest(event);
+      break;
+    case "DELETE":
+      response = await handleDeleteRequest(event);
+      break;
+    default:
+      response = {
+        statusCode: 400,
+        body: JSON.stringify({
+          message: "Invalid request type",
+          event: event,
+          context: context,
+        }),
+      };
+  }
+
+  return response;
+};
+
+const handleGetRequest = async () => {
+  const command = new ScanCommand({
+    TableName: "tasks",
+  });
+
+  const response = await docClient.send(command);
+
+  return {
+    statusCode: 200,
+    body: JSON.stringify(response.Items),
+  };
+};
+
+const handlePostRequest = async (event, context) => {
+  const { name, completed } = JSON.parse(event.body);
+
+  const command = new PutCommand({
+    TableName: "tasks",
+    Item: {
+      id: context.awsRequestId,
+      name,
+      completed,
+    },
+  });
+
+  await docClient.send(command);
+
+  return {
+    statusCode: 200,
+    body: JSON.stringify({ message: "Task created successfully" }),
+  };
+};
+
+export const handlePatchRequest = async (event, context) => {
+  const { id, name, completed } = JSON.parse(event.body);
+
+  const command = new UpdateCommand({
+    TableName: "tasks",
+    Key: {
+      id,
+    },
+    ExpressionAttributeNames: {
+      "#name": "name",
+    },
+    UpdateExpression: "set #name = :n, completed = :c",
+    ExpressionAttributeValues: {
+      ":n": name,
+      ":c": completed,
+    },
+    ReturnValues: "ALL_NEW",
+  });
+
+  const response = await docClient.send(command);
+
+  return {
+    statusCode: 200,
+    body: JSON.stringify({
+      message: "Task updated successfully",
+      task: response.Attributes,
+    }),
+  };
+};
+
+const handleDeleteRequest = async (event) => {
+  const { id } = JSON.parse(event.body);
+
+  const command = new DeleteCommand({
+    TableName: "tasks",
+    Key: { id },
+    ReturnValues: "ALL_OLD",
+  });
+
+  const response = await docClient.send(command);
+
+  return {
+    statusCode: 200,
+    body: JSON.stringify({
+      message: "Task deleted successfully",
+      task: response.Attributes,
+    }),
+  };
+};
+
+     ( And click on Deploy )
+
+
+    03- Creat API Gateway
+        * REST API
+        * Create REST API
+          - select New API
+          - API name - datlabunch-api01 ( name optional )
+        * REMAINING ALL DEFULT
+      --> Create Resource 
+          - Resource name - dasource ( name optional )
+          - Select CORS box
+          - click on create 
+      --> Click on your source name and click on create method
+          - Method details- Select Get
+          - Integration type - Lamda function
+          - Enable Lambda proxy integration
+          - Lamda function - Chose your Lamda fuction 
+          * REMAINING ALL DEFULT
+          - Click on create method
+         ( Create the Get Post Patch Delete ) in the same way for all
+       CLICK ON DEPLOY
+    
+     04- Deploying and Testing 
+         * Open API Gateway --> Click on your Api 
+         * Open Stages
+            -In that copy the Invoke URL
+         * And test the url by using postman 
